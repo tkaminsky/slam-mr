@@ -1,141 +1,185 @@
 <?xml version="1.0"?>
-<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="ground_robot">
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="ground_robot">
 
-    <xacro:property name="wheel_radius" value="0.05" />
-    <xacro:property name="wheel_base" value="0.3" />
-    <xacro:property name="body_length" value="0.4" />
-    <xacro:property name="body_width" value="0.3" />
+    <!-- Parameters -->
+    <xacro:property name="wheel_radius"    value="0.1"/>
+    <xacro:property name="wheel_width"     value="0.05"/>
+    <xacro:property name="body_length"     value="0.4"/>
+    <xacro:property name="body_width"      value="0.3"/>
+    <xacro:property name="body_thickness"  value="0.1"/>
+    <!-- drive wheels moved back relative to chassis center -->
+    <xacro:property name="wheel_x_offset"  value="0.05"/>
+    <!-- caster geometry -->
+    <xacro:property name="caster_radius"   value="0.05"/>
+    <xacro:property name="caster_width"    value="0.02"/>
 
-    <link name="base_link" />
+    <!-- Base frame -->
+    <link name="base_link"/>
     <joint name="base_to_chassis" type="fixed">
         <parent link="base_link"/>
         <child  link="chassis_link"/>
         <origin xyz="0 0 0" rpy="0 0 0"/>
     </joint>
 
-
-    <!-- Wheel Macro -->
-    <xacro:macro name="wheel" params="name base_link xpos ypos radius">
-        <link name="${name}">
-            <visual>
-                <geometry>
-                    <cylinder length="0.02" radius="${radius}"/>
-                </geometry>
-                <material name="${name}_material">
-                    <color rgba="0.1 0.1 0.1 1.0"/>
-                </material>
-            </visual>
-
-            <collision>
-                <geometry>
-                    <cylinder length="0.02" radius="${radius}"/>
-                </geometry>
-            </collision>
-
-           <inertial>
-                <!-- origin of inertia frame -->
-                <origin xyz="0 0 0" rpy="0 0 0"/>
-                <!-- mass in kg -->
-                <mass value="2.0"/>
-                <!-- diagonal inertia (kg·m²) – tweak these so they roughly match your robot's size -->
-                <inertia
-                ixx="0.008125" ixy="0.0" ixz="0.0"
-                iyy="0.008125" iyz="0.0"
-                izz="0.00125"/>
-            </inertial>
-        </link>
-
-        <joint name="${name}_joint" type="continuous">
-            <parent link="${base_link}"/>
-            <child  link="${name}"/>
-            <origin xyz="${xpos} ${ypos} 0" rpy="0 0 0"/>
-            <axis   xyz="0 1 0"/>
-        </joint>
+    <!-- Wheel macro: generates wheel link + joint -->
+    <xacro:macro name="wheel" params="name parent_link xpos ypos radius width">
+      <link name="${name}">
+        <visual>
+          <!-- rotate cylinder so its axis is along Y -->
+          <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+          <geometry>
+            <cylinder length="${width}" radius="${radius}"/>
+          </geometry>
+          <material name="${name}_material">
+            <color rgba="0.1 0.1 0.1 1.0"/>
+          </material>
+        </visual>
+        <collision>
+          <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+          <geometry>
+            <cylinder length="${width}" radius="${radius}"/>
+          </geometry>
+        </collision>
+        <inertial>
+          <mass value="0.5"/>
+          <inertia ixx="0.0005" ixy="0.0" ixz="0.0"
+                  iyy="0.0005" iyz="0.0"
+                  izz="0.0005"/>
+        </inertial>
+      </link>
+      <joint name="${name}_joint" type="continuous">
+        <parent link="${parent_link}"/>
+        <child  link="${name}"/>
+        <!-- lift wheel so it sits on ground -->
+        <origin xyz="${xpos} ${ypos} ${radius}" rpy="0 0 0"/>
+        <axis   xyz="0 1 0"/>
+      </joint>
     </xacro:macro>
 
-    <!-- Chassis_link -->
+    <!-- Chassis link -->
     <link name="chassis_link">
-        <visual>
-            <geometry>
-                <box size="${body_length} ${body_width} 0.1"/>
-            </geometry>
-            <material name="chassis_material">
-                <color rgba="0.1 0.1 0.8 1.0"/>
-            </material>
-        </visual>
-
-        <collision>
-            <geometry>
-                <box size="${body_length} ${body_width} 0.1"/>
-            </geometry>
-        </collision>
-
-        <inertial>
-            <!-- origin of inertia frame -->
-            <origin xyz="0 0 0" rpy="0 0 0"/>
-            <!-- mass in kg -->
-            <mass value="2.0"/>
-            <!-- diagonal inertia (kg·m²) – tweak these so they roughly match your robot's size -->
-            <inertia
-            ixx="0.03" ixy="0.0" ixz="0.0"
-            iyy="0.04" iyz="0.0"
-            izz="0.05"/>
-        </inertial>
+      <visual>
+        <!-- lift chassis so it's centered on wheels -->
+        <origin xyz="0 0 ${wheel_radius + body_thickness/2}" rpy="0 0 0"/>
+        <geometry>
+          <box size="${body_length} ${body_width} ${body_thickness}"/>
+        </geometry>
+        <material name="chassis_material">
+          <color rgba="0.6 0.6 0.9 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 ${wheel_radius + body_thickness/2}" rpy="0 0 0"/>
+        <geometry>
+          <box size="${body_length} ${body_width} ${body_thickness}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="2.0"/>
+        <inertia ixx="0.03" ixy="0.0" ixz="0.0"
+                iyy="0.04" iyz="0.0"
+                izz="0.05"/>
+      </inertial>
     </link>
 
-    <!-- Wheels -->
-    <xacro:wheel name="wheel_left" base_link="chassis_link"  xpos="0" ypos="${wheel_base/2}" radius="${wheel_radius}" />
-    <xacro:wheel name="wheel_right" base_link="chassis_link" xpos="0" ypos="${-wheel_base/2}" radius="${wheel_radius}" />
+    <!-- Differential-drive wheels, shifted backward -->
+    <xacro:wheel name="wheel_left"  parent_link="chassis_link"
+                xpos="${-wheel_x_offset}" ypos="${(body_width/2 + wheel_width/2)}"
+                radius="${wheel_radius}" width="${wheel_width}"/>
+    <xacro:wheel name="wheel_right" parent_link="chassis_link"
+                xpos="${-wheel_x_offset}" ypos="${-(body_width/2 + wheel_width/2)}"
+                radius="${wheel_radius}" width="${wheel_width}"/>
 
-    <!-- Sensors -->
-    <link name="laser_link" />
-
-    <joint name="laser_joint" type="fixed">
-        <parent link="chassis_link"/>
-        <child  link="laser_link"/>
-        <origin xyz="0.2 0 0.05" rpy="0 0 0"/>
+    <!-- Caster wheel link -->
+    <link name="caster_link">
+      <visual>
+        <!-- orient cylinder axis along Y for rolling -->
+        <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+        <geometry>
+          <cylinder length="${caster_width}" radius="${caster_radius}"/>
+        </geometry>
+        <material name="caster_material">
+          <color rgba="0.3 0.3 0.3 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+        <geometry>
+          <cylinder length="${caster_width}" radius="${caster_radius}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="0.1"/>
+        <inertia ixx="0.0001" ixy="0.0" ixz="0.0"
+                iyy="0.0001" iyz="0.0"
+                izz="0.0001"/>
+      </inertial>
+    </link>
+    <joint name="caster_wheel_joint" type="continuous">
+      <parent link="chassis_link"/>
+      <child  link="caster_link"/>
+      <!-- place caster at front of chassis, sitting on ground -->
+      <origin xyz="${body_length/2 - caster_radius} 0 ${caster_radius}" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
     </joint>
 
-   <gazebo reference="laser_link">
-        <sensor name="laser" type="gpu_lidar">
-            <update_rate>10.0</update_rate>
-            <topic>scan</topic>
-            <ray>
-                <scan>
-                    <horizontal>
-                        <samples>640</samples>
-                        <resolution>1</resolution>
-                        <min_angle>-0.52360</min_angle>
-                        <max_angle> 0.52360</max_angle>
-                    </horizontal>
-                    <vertical>
-                        <samples>1</samples>
-                        <resolution>0.01</resolution>
-                        <min_angle>0</min_angle>
-                        <max_angle>0</max_angle>
-                    </vertical>
-                </scan>
-                <range>
-                    <min>0.12</min>
-                    <max>3.5</max>
-                </range>
-            </ray>
-            <always_on>1</always_on>
-            <visualize>true</visualize>
-        </sensor>
+    <!-- Laser sensor link -->
+    <link name="laser_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="0.02"/>
+        </geometry>
+        <material name="laser_marker">
+          <color rgba="1 0 0 1"/>
+        </material>
+      </visual>
+    </link>
+    <joint name="laser_joint" type="fixed">
+      <parent link="chassis_link"/>
+      <child  link="laser_link"/>
+      <origin xyz="0.2 0 ${wheel_radius + body_thickness/2}" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Gazebo GPU LIDAR plugin -->
+    <gazebo reference="laser_link">
+      <sensor name="laser" type="gpu_lidar">
+        <update_rate>10.0</update_rate>
+        <topic>scan</topic>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>640</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.5236</min_angle>
+              <max_angle>0.5236</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>1</samples>
+              <resolution>0.01</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.12</min>
+            <max>3.5</max>
+          </range>
+        </ray>
+        <always_on>1</always_on>
+        <visualize>true</visualize>
+      </sensor>
     </gazebo>
 
-    <transmission name="left_transmission">
-        <type>transmission_interface/SimpleTransmission</type>
-        <joint name="wheel_left_joint"/>
-        <actuator name="motor_left" />
-        <mechanicalReduction>1</mechanicalReduction>
-    </transmission>
-    <transmission name="right_transmission">
-        <type>transmission_interface/SimpleTransmission</type>
-        <joint name="wheel_right_joint"/>
-        <actuator name="motor_right" />
-        <mechanicalReduction>1</mechanicalReduction>
-    </transmission>
+    <!-- Gazebo diff-drive plugin -->
+    <gazebo>
+      <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+        <left_joint>wheel_left_joint</left_joint>
+        <right_joint>wheel_right_joint</right_joint>
+        <wheel_separation>${body_width + wheel_width}</wheel_separation>
+        <wheel_radius>${wheel_radius}</wheel_radius>
+        <odom_publish_frequency>50</odom_publish_frequency>
+      </plugin>
+    </gazebo>
 
 </robot>

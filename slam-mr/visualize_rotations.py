@@ -1,11 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from helpers import stack_block_diag, stack_vecs, vec, project_to_SO2, plot_pose, rot_mat
+from helpers import stack_block_diag, stack_vecs, vec, project_to_SO2, plot_pose, rot_mat, random_adjacency_matrix
 import cvxpy as cp
 import imageio
 import random
 
-N = 4
+"""
+    This file is DEPRACATED. See simple_ts.py for the actual working (centralized) code for the SLAM problem.
+"""
+
+N = 5
 noise_level = np.pi / 4
 # noise_level = 2 * np.pi
 N_iters = 100
@@ -19,28 +23,7 @@ rots = [np.random.random() * 2 * np.pi for _ in range(N)]
 rots = [0] + rots
 
 # Create adjacency matrix
-Adj = np.zeros((N + 1, N + 1), dtype=int)
-
-
-# # While it isn't connected, add edges
-# while np.linalg.matrix_rank(Adj) < N + 1:
-#     for i in range(N + 1):
-#         for j in range(i + 1, N + 1):
-#             # Randomly decide if there is an edge
-#             if np.random.random() < 0.5:
-#                 Adj[i, j] = 1
-#                 Adj[j, i] = 1
-# # Make adj a line
-# for i in range(N + 1):
-#     for j in range(i + 1, N + 1):
-#         if i == j - 1:
-#             Adj[i, j] = 1
-#             Adj[j, i] = 1
-
-# Adj[0,-1] = 1
-# Adj[-1,0] = 1
-
-Adj = np.ones((N + 1, N + 1), dtype=int) - np.eye(N + 1, dtype=int)
+Adj = random_adjacency_matrix(N, p=0.1) 
 
 print(Adj)
 
@@ -52,7 +35,7 @@ for i in range(N + 1):
     for j in range(N + 1):
         if i != j:
             noise = (np.random.random() - 0.5) * noise_level
-            R_ij = rot_mat(rots[j] + noise) @ rot_mat(rots[i]).T
+            R_ij = rot_mat(rots[i]).T@rot_mat(rots[j] + noise)
             relative_rotations[(i, j)] = R_ij
         if i == j:
             relative_rotations[(i,j)] = np.eye(2)
@@ -88,20 +71,24 @@ frames = []
 for it in range(N_iters):
     # Update estimates
     for agent in range(N + 1):
-        Num_neighbors = np.sum(Adj[agent])
-        y[agent] = (1 - gamma) * y[agent]  + gamma * (1/(2 * Num_neighbors)) * sum(
-            [np.kron(relative_rotations[(agent, j)] + relative_rotations[(j, agent)].T, np.eye(2)) @ y[j]
-             for j in range(N + 1) if j != agent and Adj[agent, j] == 1]
-        )
+        if agent == 0:
+            y[agent] = vec(rot_arrs[agent])
+        else:
+            Num_neighbors = np.sum(Adj[agent])
+            y[agent] = (1 - gamma) * y[agent]  + gamma * (1/(2 * Num_neighbors)) * sum(
+                [np.kron(relative_rotations[(agent, j)] + relative_rotations[(j, agent)].T, np.eye(2)) @ y[j]
+                for j in range(N + 1) if j != agent and Adj[agent, j] == 1]
+            )
     # Reshape & project
     y_vecs = [y_vec.reshape(2, 2, order='F') for y_vec in y]
     Rs = [project_to_SO2(y_vec) for y_vec in y_vecs]
 
-    change = rot_mat(rots[0]) @ Rs[0].T
-    Rs_est = [change @ R for R in Rs]
+    # change = rot_arrs[0].T@Rs[0]
+    change = np.eye(2)
+    Rs_est = [R@change.T for R in Rs]
 
     # Plot
-    fig, axes = plt.subplots(1, 2, figsize=(8, 4))
+    fig, axes = plt.subplots(2, 1, figsize=(8, 4))
     titles = ['Ground Truth', f'Iteration {it+1}']
     for ax, title in zip(axes, titles):
         ax.set_xlim(-1, N + 1)

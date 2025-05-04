@@ -149,6 +149,7 @@
     <!-- Gazebo GPU LIDAR plugin -->
     <gazebo reference="laser_link">
       <sensor name="laser" type="gpu_lidar">
+        <gz_frame_id>$(arg namespace)/laser_link</gz_frame_id>
         <update_rate>10.0</update_rate>
         <topic>/model/$(arg namespace)/scan</topic>
         <ray>

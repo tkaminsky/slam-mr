@@ -15,7 +15,6 @@ def generate_launch_description():
         cmd=[
             'gz', 'sim',
             '-s',                              # server only
-            '-r',                              # run immediately
             '-v', '4',                         # verbose
             '--render-engine', 'ogre2',
             world_file

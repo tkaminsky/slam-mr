@@ -8,13 +8,8 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_share = get_package_share_directory('slam-mr')
 
-    world_file = os.path.join(pkg_share, 'worlds', 'world.world')
-
-    gpu_workaround_env = {
-        'LIBGL_ALWAYS_SOFTWARE': '1',
-    }
-    merged_env = os.environ.copy()
-    merged_env.update(gpu_workaround_env)
+    world_file = os.path.join(pkg_share, 'worlds', 'slam-world.world')
+    rviz_config = os.path.join(pkg_share, 'config', 'slam_mr.rviz')
 
     # Start Gazebo server and client
     gz_server = ExecuteProcess(
@@ -27,19 +22,20 @@ def generate_launch_description():
             world_file
         ],
         output='screen',
-        env=merged_env # type: ignore
+        env={**os.environ,  'LIBGL_ALWAYS_SOFTWARE': '1'} # type: ignore
     )
 
     gz_client = ExecuteProcess(
         cmd=['gz', 'sim', '-g'],
         output='screen',
-        env=merged_env # type: ignore
+        env={**os.environ,  'LIBGL_ALWAYS_SOFTWARE': '1'} # type: ignore
     )
 
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
         name='rviz2',
+        arguments=['-d', rviz_config],
         parameters=[{'use_sim_time': True}],
         output='screen',
     )
@@ -48,5 +44,5 @@ def generate_launch_description():
     return LaunchDescription([
         gz_server,
         gz_client,
-        # rviz_node
+        rviz_node
     ])

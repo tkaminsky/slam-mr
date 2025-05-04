@@ -12,7 +12,7 @@
     <!-- caster geometry -->
     <xacro:property name="caster_radius"   value="0.05"/>
     <xacro:property name="caster_width"    value="0.02"/>
-    <xacro:property name="namespace"       value=""/>
+    <xacro:arg      name="namespace"       default="!!!"/>
 
     <!-- Base frame -->
     <link name="base_link"/>
@@ -146,7 +146,7 @@
     <gazebo reference="laser_link">
       <sensor name="laser" type="gpu_lidar">
         <update_rate>10.0</update_rate>
-        <topic>/model/${namespace}/scan</topic>
+        <topic>/model/$(arg namespace)/scan</topic>
         <ray>
           <scan>
             <horizontal>
@@ -172,18 +172,39 @@
       </sensor>
     </gazebo>
 
-    <!-- Gazebo diff-drive plugin -->
     <gazebo>
       <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
         <ros>
-          <namespace>${namespace}</namespace>
+          <namespace>$(arg namespace)</namespace>
         </ros>
+
         <left_joint>wheel_left_joint</left_joint>
         <right_joint>wheel_right_joint</right_joint>
         <wheel_separation>${body_width + wheel_width}</wheel_separation>
         <wheel_radius>${wheel_radius}</wheel_radius>
         <odom_publish_frequency>50</odom_publish_frequency>
       </plugin>
-    </gazebo>
 
+      <plugin
+        filename="gz-sim-joint-state-publisher-system"
+        name="gz::sim::systems::JointStatePublisher">
+          <topic>/model/$(arg namespace)/joint_state</topic>
+      </plugin>
+
+      <plugin
+        filename="gz-sim-pose-publisher-system"
+        name="gz::sim::systems::PosePublisher">
+        <publish_link_pose>true</publish_link_pose>
+        <use_pose_vector_msg>false</use_pose_vector_msg>
+        <static_publisher>true</static_publisher>
+        <static_update_frequency>1</static_update_frequency>
+      </plugin>
+
+      <plugin
+        filename="gz-sim-odometry-publisher-system"
+        name="gz::sim::systems::OdometryPublisher">
+        <odom_frame>$(arg namespace)/odom</odom_frame>
+        <robot_base_frame>$(arg namespace)</robot_base_frame>
+      </plugin>
+    </gazebo>
 </robot>

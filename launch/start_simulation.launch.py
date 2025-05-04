@@ -11,7 +11,6 @@ def generate_launch_description():
     world_file = os.path.join(pkg_share, 'worlds', 'slam-world.world')
     rviz_config = os.path.join(pkg_share, 'config', 'slam_mr.rviz')
 
-    # Start Gazebo server and client
     gz_server = ExecuteProcess(
         cmd=[
             'gz', 'sim',
@@ -40,7 +39,6 @@ def generate_launch_description():
         output='screen',
     )
 
-    # Return assembled LaunchDescription
     return LaunchDescription([
         gz_server,
         gz_client,

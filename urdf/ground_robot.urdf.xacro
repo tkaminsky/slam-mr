@@ -1,18 +1,22 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://ros.org/wiki/xacro" name="ground_robot">
 
+    <xacro:arg      name="namespace"       default="!!!"/>
+
     <!-- Parameters -->
-    <xacro:property name="wheel_radius"    value="0.1"/>
-    <xacro:property name="wheel_width"     value="0.05"/>
+    <!-- chassis geometry -->
     <xacro:property name="body_length"     value="0.4"/>
     <xacro:property name="body_width"      value="0.3"/>
     <xacro:property name="body_thickness"  value="0.1"/>
-    <!-- drive wheels moved back relative to chassis center -->
-    <xacro:property name="wheel_x_offset"  value="0.05"/>
+
+    <!-- drive wheel geometry -->
+    <xacro:property name="drive_wheel_radius"    value="0.1"/>
+    <xacro:property name="drive_wheel_width"     value="0.05"/>
+    <xacro:property name="drive_wheel_x_offset"  value="0.05"/>
+
     <!-- caster geometry -->
     <xacro:property name="caster_radius"   value="0.05"/>
     <xacro:property name="caster_width"    value="0.02"/>
-    <xacro:arg      name="namespace"       default="!!!"/>
 
     <!-- Base frame -->
     <link name="base_link"/>
@@ -61,7 +65,7 @@
     <link name="chassis_link">
       <visual>
         <!-- lift chassis so it's centered on wheels -->
-        <origin xyz="0 0 ${wheel_radius + body_thickness/2}" rpy="0 0 0"/>
+        <origin xyz="0 0 ${drive_wheel_radius + body_thickness/2}" rpy="0 0 0"/>
         <geometry>
           <box size="${body_length} ${body_width} ${body_thickness}"/>
         </geometry>
@@ -70,7 +74,7 @@
         </material>
       </visual>
       <collision>
-        <origin xyz="0 0 ${wheel_radius + body_thickness/2}" rpy="0 0 0"/>
+        <origin xyz="0 0 ${drive_wheel_radius + body_thickness/2}" rpy="0 0 0"/>
         <geometry>
           <box size="${body_length} ${body_width} ${body_thickness}"/>
         </geometry>
@@ -85,11 +89,11 @@
 
     <!-- Differential-drive wheels, shifted backward -->
     <xacro:wheel name="wheel_left"  parent_link="chassis_link"
-                xpos="${-wheel_x_offset}" ypos="${(body_width/2 + wheel_width/2)}"
-                radius="${wheel_radius}" width="${wheel_width}"/>
+                xpos="${-drive_wheel_x_offset}" ypos="${(body_width/2 + drive_wheel_width/2)}"
+                radius="${drive_wheel_radius}" width="${drive_wheel_width}"/>
     <xacro:wheel name="wheel_right" parent_link="chassis_link"
-                xpos="${-wheel_x_offset}" ypos="${-(body_width/2 + wheel_width/2)}"
-                radius="${wheel_radius}" width="${wheel_width}"/>
+                xpos="${-drive_wheel_x_offset}" ypos="${-(body_width/2 + drive_wheel_width/2)}"
+                radius="${drive_wheel_radius}" width="${drive_wheel_width}"/>
 
     <!-- Caster wheel link -->
     <link name="caster_link">
@@ -139,7 +143,7 @@
     <joint name="laser_joint" type="fixed">
       <parent link="chassis_link"/>
       <child  link="laser_link"/>
-      <origin xyz="0.2 0 ${wheel_radius + body_thickness/2}" rpy="0 0 0"/>
+      <origin xyz="0.2 0 ${drive_wheel_radius + body_thickness/2}" rpy="0 0 0"/>
     </joint>
 
     <!-- Gazebo GPU LIDAR plugin -->
@@ -180,8 +184,8 @@
 
         <left_joint>wheel_left_joint</left_joint>
         <right_joint>wheel_right_joint</right_joint>
-        <wheel_separation>${body_width + wheel_width}</wheel_separation>
-        <wheel_radius>${wheel_radius}</wheel_radius>
+        <wheel_separation>${body_width + drive_wheel_width}</wheel_separation>
+        <drive_wheel_radius>${drive_wheel_radius}</drive_wheel_radius>
         <odom_publish_frequency>50</odom_publish_frequency>
       </plugin>
 

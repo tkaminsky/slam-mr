@@ -33,7 +33,13 @@ def rot_mat(theta):
                      [np.sin(theta),  np.cos(theta)]])
 
 def vec(M):
-    return M.reshape(-1, order='F')
+    # Make M nkx1
+    if M.ndim == 2:
+        return M.reshape(-1, 1, order='F')
+    elif M.ndim == 1:
+        return M.reshape(-1, 1)
+    else:
+        raise ValueError("M must be a 2D or 1D array")
 
 def plot_pose(pose, ax, color='k'):
     origin, R = pose

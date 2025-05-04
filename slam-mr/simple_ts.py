@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from helpers import stack_block_diag, stack_vecs, vec, project_to_SO2, plot_pose, rot_mat, random_adjacency_matrix, J
-import cvxpy as cp
+from helpers import stack_block_diag, stack_vecs, vec, project_to_SO2, plot_pose, rot_mat, random_adjacency_matrix
 import imageio
 import random
 
@@ -9,13 +8,16 @@ import random
     This is the actual working (centralized) code for the SLAM problem
 """
 
-N = 50
-w_R = 1000
-tr_var = .1
+N = 5
+w_R = 10000
+tr_var = .01
 w_t = 1 / tr_var
 # w_R = 2 * np.pi
 N_iters = 50
 gamma = 1
+
+np.random.seed(1123)
+random.seed(1123)
 
 # np.random.seed(42)
 # random.seed(42)
@@ -30,7 +32,7 @@ rots = [0] + rots
 trs = [np.zeros((2,1))] + trs
 
 # Create adjacency matrix
-Adj = random_adjacency_matrix(N, p=.1) 
+Adj = random_adjacency_matrix(N, p=1) 
 
 print(Adj)
 
@@ -161,10 +163,6 @@ print(f"Saved GIF to {gif_path}")
 print("Initial rotation optimization complete.")
 print("Starting translation optimization...")
 
-import numpy as np
-import matplotlib.pyplot as plt
-import imageio
-
 # … assume rots, trs, Adj, relative_rotations, relative_translations,
 #    Rs_est, N, colors, plot_pose, rot_mat, rot_arrs are all defined …
 
@@ -172,18 +170,25 @@ N_iters_T = 50
 gamma_T  = 1
 
 # y[i] is [theta, t_i], where t_i is a 2D translation
-ys = [N * np.random.random((2,1)) for _ in range(N + 1)]
+# ys = [N * np.random.random((2,1)) for _ in range(N + 1)]
+ys = [np.ones((2,1)) * N / 2 for _ in range(N + 1)]
 
 print("Extrema:")
 print(np.max(ys))
 print(np.min(ys))
 
-# frames = []
+frames = []
 
 for it in range(N_iters_T):
     print(f"Iteration {it+1}/{N_iters_T}")
     # --- step the solver ---
     for agent in range(N + 1):
+        print("Agent: ", agent)
+        print("Estimated rotation: ", Rs_est[agent])
+        print("Estimated translation: ", ys[agent])
+        print("Neighbors: ", Adj[agent])
+        print("Neighbor rotations: ", [Rs_est[k] for k in range(N + 1) if k != agent and Adj[agent, k] == 1])
+        exit()
         Num_neighbors = np.sum(Adj[agent])
         g_agent = sum(
             [

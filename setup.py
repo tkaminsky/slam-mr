@@ -24,6 +24,7 @@ setup(
     license='MIT',
     entry_points={
         'console_scripts': [
+            'slam_robot_node = slam-mr.slam_robot_node:main',
         ],
     },
 )

@@ -1,6 +1,7 @@
 import rclpy
 import numpy as np
 import numpy.typing as npt
+import time
 
 from rclpy.subscription import Subscription
 from rclpy.node import Node
@@ -23,6 +24,29 @@ def unrot_mat(mat: npt.NDArray[np.float64]) -> float:
     assert mat.shape == (2, 2), "Matrix must be 2x2"
     return np.arctan2(mat[1, 0], mat[0, 0])
 
+def project_to_SO2(mat: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """
+    Projects a matrix to the special orthogonal group SO(2).
+This is done by performing Singular Value Decomposition (SVD) and ensuring the determinant is 1.
+    """
+    U, _, Vt = np.linalg.svd(mat)
+    R = U @ Vt
+    if np.linalg.det(R) < 0:
+        U[:, -1] *= -1
+        R = U @ Vt # type: ignore
+    return R # type: ignore
+
+def vec(mat: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """
+    Converts a 2D matrix to a vector by stacking its columns.
+    """
+    return mat.reshape(-1, 1, order='F')
+
+def now() -> int:
+    """
+    Returns the current time in nanoseconds.
+    """
+    return int(time.time() * 1e9)
 
 class SlamRobotNode(Node):
 
@@ -32,7 +56,9 @@ class SlamRobotNode(Node):
         # Unique Identifier for the robot.
         self.robot_name = self.get_namespace().split('/')[-1]
         # The robots that are actively rendezvousing with this one alongside their pose estimates.
-        self.currently_rendezvousing = cast(Optional[dict[str, Optional[Pose]]], None)
+        self.currently_rendezvousing = cast(list[str], None)
+        # The robot who initiatied rendezvous
+        self.rendezvous_initiator = None
         # The lock to ensure that only one rendezvous is active at a time.
         self.rendezvous_lock = Lock()
         # The ground truth pose estimates (value) of a robot (key) from the perspective of the world.
@@ -41,6 +67,8 @@ class SlamRobotNode(Node):
         self.sensed_pose_estimates: dict[str, Pose] = {}
         # The pose estimates (value) of this robot from the perspective of the other robots (key).
         self.received_pose_estimates: dict[str, Pose] = {}
+        # The pose estimates (value) of all the robots (key) in the global reference frame. This is used in the rendezvous algorithm.
+        self.global_pose_estimates: dict[str, Pose] = {}
 
         # All of the robots that are active
         self.team = {self.robot_name}
@@ -59,6 +87,10 @@ class SlamRobotNode(Node):
         self.local_pose_estimate_publisher = self.create_publisher(Pose, f'/{self.robot_name}/local_pose_estimate', 10) # type: ignore
         # Publish the local pose estimate every 1ms
         self.local_pose_timer = self.create_timer(1e-3, f'/{self.robot_name}/local_pose_estimate', self.send_local_pose_estimates) # type: ignore
+        # Subscribe to the global pose estimates of the other robots
+        self.global_pose_estimate_subscriber: dict[str, Subscription] = {}
+        # Broadcasts the global pose estimate of this robot
+        self.global_pose_estimate_publisher = self.create_publisher(Pose, f'/{self.robot_name}/global_pose_estimate', 10) # type: ignore
 
         # Subscribe to all rendezvous notifications
         self.rendezvous_subscriber = self.create_subscription(BeginRendezvous, '/rendezvous', self.rendezvous_callback, 10) # type: ignore
@@ -67,7 +99,7 @@ class SlamRobotNode(Node):
         # Every 30s attempt a rendezvous with the other robots
         self.rendezvous_timer = self.create_timer(30.0, self.start_rendezvous) # type: ignore
 
-        self.get_logger().info(f'Robot name: {self.robot_name}') # type: ignore
+        self.get_logger().info(f'Robot name: {self.robot_name} initialized') # type: ignore
 
     def on_team_msg(self, msg: String):
         """
@@ -81,12 +113,12 @@ class SlamRobotNode(Node):
                 self.create_subscription(Pose, f'/{robot_name}/pose', lambda pose: self.on_ground_truth_pose(pose), 10) # type: ignore
             self.local_pose_estimate_subscribers[robot_name] = \
                 self.create_subscription(Pose, f'/{robot_name}/local_pose_estimate', lambda pose: self.on_local_pose_estimate(robot_name, pose), 10) # type: ignore
+            self.global_pose_estimate_subscriber[robot_name] = \
+                self.create_subscription(Pose, f'/{robot_name}/global_pose_estimate', lambda pose: self.on_global_pose_estimate(robot_name, pose), 10) # type: ignore
 
     def on_ground_truth_pose(self, pose: Pose):
         """
         Callback for when a new ground truth pose is received.
-
-        TODO: this function is not done correctly, the pose topic publishes a different msg type and so this would need to be fixed so that the output is indeed a slam_mr_msgs/msg/Pose
         """
         robot_name = cast(str, pose.robot) # type: ignore
         assert robot_name in self.team, f'{self.robot_name} received a ground truth pose from a robot that is not in the team'
@@ -104,6 +136,11 @@ class SlamRobotNode(Node):
         if estimated_robot == self.robot_name:
             self.received_pose_estimates[robot_name] = pose
 
+    def on_global_pose_estimate(self, robot_name: str, pose: Pose):
+        estimated_robot = cast(str, pose.robot) # type: ignore
+        if estimated_robot == self.robot_name:
+            self.global_pose_estimates[robot_name] = pose
+
     def send_local_pose_estimates(self):
         """
         Callback for sending all of the local pose estimates to the other robots in the team.
@@ -113,8 +150,6 @@ class SlamRobotNode(Node):
         Instead, it is assumed that these poses will be sent as they are computed by the rendezvous code.
         """
         for robot_name in self.team:
-           if robot_name == self.robot_name or (self.currently_rendezvousing is not None and robot_name in self.currently_rendezvousing):
-                continue
            pose = self.get_relative_pose_estimate(robot_name)
            self.sensed_pose_estimates[robot_name] = pose
            self.local_pose_estimate_publisher.publish(pose)
@@ -127,8 +162,8 @@ class SlamRobotNode(Node):
         rotation_noise = np.random.vonmises(0, w_R)
         translation_noise = np.random.normal(0, translation_variance, (2, 1))
 
-        gt_rotation_i = rot_mat(self.ground_truth_poses[self.robot_name].rotation) # type: ignore
-        gt_rotation_j = rot_mat(self.ground_truth_poses[robot_name].rotation) # type: ignore
+        gt_rotation_i = self.ground_truth_poses[self.robot_name].rotation.reshape(2, 2, order="F") # type: ignore
+        gt_rotation_j = self.ground_truth_poses[robot_name].rotation.reshape(2, 2, order="F") # type: ignore
 
         gt_translation_i = np.array(self.ground_truth_poses[self.robot_name].translation) # type: ignore
         gt_translation_j = np.array(self.ground_truth_poses[robot_name].translation) # type: ignore
@@ -136,8 +171,9 @@ class SlamRobotNode(Node):
         pose = Pose()
         pose.robot = robot_name
         pose.relative_to = self.robot_name
-        pose.rotation = unrot_mat(gt_rotation_i.T @ gt_rotation_j @ rot_mat(rotation_noise)) # type: ignore
+        pose.rotation = vec(gt_rotation_i.T @ gt_rotation_j @ rot_mat(rotation_noise)) # type: ignore
         pose.translation = gt_rotation_i.T @ (gt_translation_j - gt_translation_i) + translation_noise # type: ignore
+        pose.timestamp = now()
 
         return pose
 
@@ -160,7 +196,9 @@ class SlamRobotNode(Node):
             if self.currently_rendezvousing is not None:
                 return
 
-        self.rendezvous_publisher.publish(BeginRendezvous(initiator=self.robot_name, robots=self.neighbors()))
+        neighbors = self.neighbors()
+        if len(neighbors) > 0:
+            self.rendezvous_publisher.publish(BeginRendezvous(initiator=self.robot_name, robots=neighbors))
 
     def rendezvous_callback(self, msg: BeginRendezvous):
         """
@@ -170,9 +208,10 @@ class SlamRobotNode(Node):
         with self.rendezvous_lock:
             if self.currently_rendezvousing is None:
                 rendezvousing_robots = cast(list[str], [msg.initiator] + msg.robots) # type: ignore
-                if self.robot_name in rendezvousing_robots: # TODO: Check if the robot is contained in the start rendezvous message, make sure to add ego robot
+                if self.robot_name in rendezvousing_robots:
                     other_robots = [robot for robot in rendezvousing_robots if robot != self.robot_name]
-                    self.currently_rendezvousing = {robot: None for robot in other_robots}
+                    self.currently_rendezvousing = other_robots
+                    self.rendezvous_initiator = msg.initiator # type: ignore
 
                     self.get_logger().info(f'{self.robot_name} is rendezvousing with {other_robots}') # type: ignore
                     self.rendezvous(other_robots)
@@ -182,9 +221,116 @@ class SlamRobotNode(Node):
         Performs the necessary steps during rendezvous with the other robots.
         """
 
-        relative_pose_estimates = {self.get_relative_pose_estimate(robot_name) for robot_name in robot_names}
-        received_pose_estimates = {robot_name: ... for robot_name in robot_names}
-        # From here on out we hsould be sending the new estimates on /robot1/local_pose_estimate
+        current_relative_pose_estimates = {robot: self.sensed_pose_estimates[robot]  for robot in robot_names}
+        current_received_pose_estimates = {robot: self.received_pose_estimates[robot] for robot in robot_names}
+        current_global_pose_estimates = {robot: self.global_pose_estimates[robot] for robot in robot_names}
+
+        for _ in range(50):
+            # Update the estimated rotation using a linear program
+            current_global_pose_estimates[self.robot_name] = self.update_estimated_rotation(current_relative_pose_estimates, current_received_pose_estimates, current_global_pose_estimates)
+
+            # Publish the new estimates to the other robot
+            self.global_pose_estimate_publisher.publish(current_global_pose_estimates[self.robot_name])
+
+            # Wait for all the new global position updates to come in
+            messages_received_from: set[str] = set()
+            while (messages_received_from != set(robot_names)):
+                for robot in robot_names:
+                    if robot in messages_received_from:
+                        continue
+                    if self.global_pose_estimates[robot] != current_global_pose_estimates[robot]:
+                        current_global_pose_estimates[robot] = self.global_pose_estimates[robot]
+                        messages_received_from.add(robot)
+
+                rclpy.spin_once(self)
+
+        for _ in range(50):
+            # Update the estimated translation using a linear program and the new estimated rotations
+            current_global_pose_estimates[self.robot_name] = self.update_estimated_translation(current_relative_pose_estimates, current_received_pose_estimates, current_global_pose_estimates)
+
+            # Publish the new estimates to the other robot
+            self.global_pose_estimate_publisher.publish(current_global_pose_estimates[self.robot_name])
+
+            # Wait for all the new global position updates to come in
+            messages_received_from: set[str] = set()
+            while (messages_received_from != set(robot_names)):
+                for robot in robot_names:
+                    if robot in messages_received_from:
+                        continue
+                    if self.global_pose_estimates[robot] != current_global_pose_estimates[robot]:
+                        current_global_pose_estimates[robot] = self.global_pose_estimates[robot]
+                        messages_received_from.add(robot)
+
+                rclpy.spin_once(self)
+
+
+        self.currently_rendezvousing = None
+        self.rendezvous_initiator = None
+
+    def update_estimated_rotation(self,
+                                  current_relative_pose_estimates: dict[str, Pose], # pose of neighbor with respect to this robot
+                                  current_received_pose_estimates: dict[str, Pose], # pose of this robot with respect to the neighbor
+                                  current_global_pose_estimates: dict[str, Pose],   # estimated pose of the robot with respect to the world
+                                  gamma: float = 1) -> Pose:
+        neighbors = list(current_relative_pose_estimates.keys())
+        num_neighbors = len(neighbors)
+
+        if self.robot_name == self.rendezvous_initiator: # type: ignore
+            current_global_pose_estimates[self.robot_name].rotation = vec(np.eye(2)) # type: ignore
+
+        estimated_rotation = current_global_pose_estimates[self.robot_name].rotation.reshape(2, 2, order="F") # type: ignore
+
+
+        estimated_rotation = (1 - gamma) * estimated_rotation # type: ignore
+        estimated_rotation += gamma * (1 / (2 * num_neighbors)) * np.sum( # type: ignore
+            [np.kron(current_relative_pose_estimates[robot].rotation + current_received_pose_estimates[robot].rotation.T, np.eye(2)) @ self.global_pose_estimates[robot].rotation for robot in neighbors]) # type: ignore
+
+
+        pose = Pose()
+        pose.robot = self.robot_name
+        pose.relative_to = 'world'
+        pose.rotation = estimated_rotation
+        pose.translation = current_global_pose_estimates[self.robot_name].translation # type: ignore
+        pose.timestamp = now()
+
+        return pose
+
+    def update_estimated_translation(self,
+                                     current_relative_pose_estimates: dict[str, Pose], # pose of neighbor with respect to this robot
+                                     current_received_pose_estimates: dict[str, Pose], # pose of this robot with respect to the neighbor
+                                     current_global_pose_estimates: dict[str, Pose],   # estimated pose of the robot with respect to the world
+                                     gamma: float = 1) -> Pose:
+        neighbors = list(current_relative_pose_estimates.keys())
+        num_neighbors = len(neighbors)
+
+        if self.robot_name == self.rendezvous_initiator: # type: ignore
+            current_global_pose_estimates[self.robot_name].translation = np.zeros((2, 1))
+
+            pose = Pose()
+            pose.robot = self.robot_name
+            pose.relative_to = 'world'
+            pose.rotation = current_global_pose_estimates[self.robot_name].rotation # type: ignore
+            pose.translation = current_global_pose_estimates[self.robot_name].translation # type: ignore
+            pose.timestamp = now()
+            return pose
+
+
+        rotation_estimates = {robot: project_to_SO2(current_global_pose_estimates[robot].reshape(2, 2, order="F").T) for robot in neighbors} # type: ignore
+
+        g_agent = np.sum([rotation_estimates[robot] @ current_relative_pose_estimates[robot].translation - rotation_estimates[self.robot_name] @ current_relative_pose_estimates[self.robot_name].translation for robot in neighbors], axis=0) # type: ignore
+        Hy_sum = np.sum([-2 * current_received_pose_estimates[robot].translation for robot in neighbors], axis=0) # type: ignore
+
+        estimated_translation = current_global_pose_estimates[self.robot_name].translation.reshape(2, 1, order="F") # type: ignore
+        estimated_translation = (1 - 1) * estimated_translation + \
+            1 * (1 / (2 * num_neighbors)) * (-Hy_sum + g_agent) # type: ignore
+
+        pose = Pose()
+        pose.robot = self.robot_name
+        pose.relative_to = 'world'
+        pose.rotation = current_global_pose_estimates[self.robot_name].rotation # type: ignore
+        pose.translation = estimated_translation
+        pose.timestamp = now()
+        return pose
 
 
 def main(args: Optional[list[str]] = None):

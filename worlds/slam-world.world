@@ -41,9 +41,9 @@
       <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Sun</uri>
     </include>
 
-    <include>
+    <!-- <include>
       <uri>https://fuel.gazebosim.org/1.0/REZ3LIET/models/Turtlebot3 World - Model</uri>
       <scale>2 2 2</scale>
-    </include>
+    </include> -->
   </world>
 </sdf>

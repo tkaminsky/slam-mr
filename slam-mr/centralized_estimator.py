@@ -35,7 +35,7 @@ gt_rots = [0] + gt_rots
 gt_rot_mats = [rot_mat(rot) for rot in gt_rots]
 gt_trs = [np.zeros((2,1))] + gt_trs
 # Create adjacency matrix
-Adj = random_adjacency_matrix(N, p=.1) 
+Adj = random_adjacency_matrix(N, p=.1)
 
 print("Adjacency matrix:")
 print(Adj)
@@ -78,6 +78,8 @@ N_iters_T = config['Optimization']['Translation']['N_iters']
 robots = [SLAMRobot(config, id=i) for i in range(N + 1)]
 
 # Robots transmit 'sensor data'
+# every robot needs to know its neighbors sensed (relative) rotations and translations
+# every robot needs to know its neighbor's estimated rotation and translation of itself
 for i in range(N + 1):
     neighbors = [j for j in range(N + 1) if Adj[i, j] == 1]
     relative_rots = {k: v for k, v in relative_rotations.items() if k[0] == i or k[1] == i}

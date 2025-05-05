@@ -14,12 +14,12 @@ class SLAMRobot:
         else:
             self.id = id
         self.name = f"Robot {self.id}"
-        self.config = config 
+        self.config = config
 
-        self.ploting = False 
+        self.ploting = False
 
         self.pose = {
-            'translation': np.zeros((2,1)), 
+            'translation': np.zeros((2,1)),
             'rotation':np.eye(2)
         }
 
@@ -53,7 +53,7 @@ class SLAMRobot:
     def update_neighbor_estimated_rotations(self, indices, estimated_rotations):
         for idx, neighbor in enumerate(indices):
             self.neighbor_estimated_rotations[neighbor] = estimated_rotations[idx]
-    
+
     def update_neighbor_estimated_translations(self, indices, estimated_translations):
         for idx, neighbor in enumerate(indices):
             self.neighbor_estimated_translations[neighbor] = estimated_translations[idx]
@@ -65,7 +65,7 @@ class SLAMRobot:
 
     def set_rotation(self, rotation):
         self.pose['rotation'] = rotation
-    
+
     def set_translation(self, translation):
         self.pose['translation'] = translation
 
@@ -74,7 +74,7 @@ class SLAMRobot:
         self.N_neighbors = len(self.relative_rots)
         self.relative_rots = {k: v for k, v in relative_rots.items() if k[0] == self.idx or k[1] == self.idx}
 
-    # relative_rots: [Dict] x 2 x 2 matrix of relative rotations 
+    # relative_rots: [Dict] x 2 x 2 matrix of relative rotations
     #                relative_rots[i,j] = R^i_j
     # neighbor_estimates: |N_i| x 4 x 1 matrix of running estimated rotations
     def update_estimated_rotation(self):
@@ -82,13 +82,13 @@ class SLAMRobot:
         if self.id == 0:
             self.estimated_rotation = vec(np.eye(2))
             return
-        
+
         # Update estimate
         self.estimated_rotation = (1 - self.gamma_R) * self.estimated_rotation + \
             self.gamma_R * (1 / (2 * self.N_neighbors)) * sum(
                 [np.kron(self.relative_rots[(self.id, j)] + self.relative_rots[(j, self.id)].T, np.eye(2)) @ self.neighbor_estimated_rotations[j]
-                for j in self.neighbors])   
-        
+                for j in self.neighbors])
+
     def update_estimated_translation(self):
         # Reference frame is the first robot
         if self.id == 0:

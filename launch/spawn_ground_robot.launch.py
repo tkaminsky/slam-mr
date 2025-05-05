@@ -43,13 +43,13 @@ def create_robot_pipeline(context: LaunchContext) -> list[Action]:
                 'ros_type_name': 'geometry_msgs/msg/Pose',
                 'direction': 'GZ_TO_ROS'
             },
-            {
-                'gz_topic_name': f"/model/{namespace}/pose",
-                'gz_type_name': 'gz.msgs.Pose',
-                'ros_topic_name': '/tf',
-                'ros_type_name': 'tf2_msgs/msg/TFMessage',
-                'direction': 'GZ_TO_ROS'
-            },
+            # {
+            #     'gz_topic_name': f"/model/{namespace}/pose",
+            #     'gz_type_name': 'gz.msgs.Pose',
+            #     'ros_topic_name': '/tf',
+            #     'ros_type_name': 'tf2_msgs/msg/TFMessage',
+            #     'direction': 'GZ_TO_ROS'
+            # },
             {
                 'gz_topic_name': f"/model/{namespace}/pose_static",
                 'gz_type_name': 'gz.msgs.Pose_V',
@@ -91,8 +91,10 @@ def create_robot_pipeline(context: LaunchContext) -> list[Action]:
             name='robot_state_publisher', output='screen',
             parameters=[ # type: ignore
                 {'use_sim_time': True},
+                {'expand_gz_topic_names': True },
                 {'robot_description': robot_description},
                 {'frame_prefix': f'{namespace}/'},
+                {'publish_frequency': 30.0}
             ])
 
     spawn_robot =  Node(

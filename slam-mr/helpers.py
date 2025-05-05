@@ -5,6 +5,30 @@ J = np.array([
     [1,0]
 ])
 
+def rotate_pointcloud(points, R):
+    """
+    Rotate a point cloud by a rotation matrix R.
+    """
+    return points @ R.T
+
+def group_points_by_cluster(points: np.ndarray, labels: np.ndarray) -> dict:
+    """
+    Groups points by their cluster labels into a dictionary.
+
+    Args:
+        points (np.ndarray): Array of shape (N, 2) representing the point cloud.
+        labels (np.ndarray): Array of shape (N,) with cluster labels for each point.
+
+    Returns:
+        dict: Dictionary mapping cluster_id -> points in that cluster (np.ndarray of shape (M, 2))
+    """
+    cluster_dict = {}
+    for cluster_id in np.unique(labels):
+        cluster_points = points[labels == cluster_id]
+        cluster_dict[cluster_id] = cluster_points
+    return cluster_dict
+
+
 # Stacks a list of matrices into a block-diagonal matrix.
 def stack_block_diag(mats):
     k = len(mats)
@@ -46,7 +70,7 @@ def plot_pose(pose, ax, color='k'):
     # If origin is 2x1 make it (2,)
     if origin.shape == (2, 1):
         origin = origin.reshape(-1)
-    len = 0.5
+    len = 0.2
     x_end = origin + R[:, 0] * len
     y_end = origin + R[:, 1] * len
     ax.plot([origin[0], x_end[0]], [origin[1], x_end[1]], color=color)

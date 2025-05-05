@@ -1,22 +1,36 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from helpers import stack_block_diag, stack_vecs, vec, project_to_SO2, plot_pose, rot_mat, random_adjacency_matrix
-from plot import plot_gt_rotations, plot_gt_poses, get_rotation_frame, get_translation_frame, save_rotation_frame, save_translation_frame
+from helpers import stack_block_diag, stack_vecs, vec, project_to_SO2, plot_pose, rot_mat, random_adjacency_matrix, rotate_pointcloud, group_points_by_cluster
+from pc_plot import plot_gt_rotations, plot_gt_poses_with_pc, get_rotation_frame_with_pc, get_translation_frame_with_pc, save_rotation_frame, save_translation_frame, get_translation_rotation_frame_with_pc
 import imageio
 import random
 import yaml
 from robot import SLAMRobot
 
+loaded = np.load('point_cloud_with_clusters_many.npz')
+points = loaded['points']
+labels = loaded['labels']
+centers = loaded['cluster_centers']
+
+points_arr = group_points_by_cluster(points, labels)
+
 """
     This is the actual working (centralized) code for the SLAM problem
 """
+
+index = 1
+centers[index] = centers[index] + np.array([.5,.5])
 
 # True for reproducibility
 set_seed = True
 plotting = True
 if set_seed:
-    np.random.seed(1123)
-    random.seed(1123)
+    # np.random.seed(1123)
+    # random.seed(1123)
+    np.random.seed(2620)
+    random.seed(2620)
+
+rel_points = [points_arr[i] - centers[i] for i in range(len(centers))]
 
 # Load config dict from yaml
 config_path = 'robot_config.yaml'
@@ -27,7 +41,7 @@ N_iters_R = config['Optimization']['Rotation']['N_iters']
 N_iters_T = config['Optimization']['Translation']['N_iters']
 
 # Number of agnets
-N = config['N']
+N = len(centers) - 1
 # 'Concentration' parameter for von Mises distribution. Higher values mean less noise
 w_R = 50
 # Variance for (gaussian) translation noise
@@ -36,12 +50,29 @@ tr_var = .2
 print("Generating random rotations and translations...")
 
 # Ground truth poses
-gt_rots = [np.random.random() * 2 * np.pi for _ in range(N)]
-gt_trs = [np.random.random((2,1)) * N for _ in range(N)]
+gt_rots = [np.random.random() * 2 * np.pi for _ in range(N + 1)]
+# gt_trs are cluster centers
+gt_trs = [centers[i].reshape(2,1) for i in range(N + 1)]
 # Add identity rotation as a frame of reference (we'll remove this later)
-gt_rots = [0] + gt_rots
 gt_rot_mats = [rot_mat(rot) for rot in gt_rots]
-gt_trs = [np.zeros((2,1))] + gt_trs
+
+rel_points = [rotate_pointcloud(rel_points[i], rot_mat(gt_rots[i])) for i in range(N + 1)]
+
+# # Plot the relative points
+# if plotting:
+#     fig, ax = plt.subplots(figsize=(8, 4))
+#     for i in range(N):
+#         ax.scatter(rel_points[i][:, 0], rel_points[i][:, 1], label=f'Cluster {i}')
+#     ax.set_title('Relative Points')
+#     ax.legend()
+#     plt.show()
+
+# Rotate points by gt_rots, and center them around gt_trs
+for i in range(N + 1):
+    points[labels == i, 0] = np.cos(gt_rots[i]) * points[labels == i, 0] - np.sin(gt_rots[i]) * points[labels == i, 1]
+    points[labels == i, 1] = np.sin(gt_rots[i]) * points[labels == i, 0] + np.cos(gt_rots[i]) * points[labels == i, 1]
+    points[labels == i, :] += gt_trs[i].reshape(1,2)
+
 # Create adjacency matrix
 Adj = random_adjacency_matrix(N, p=.01)
 
@@ -68,7 +99,7 @@ print("Poses generated.")
 if plotting:
     print("Generating ground truth plot...")
     plot_gt_rotations(gt_rots, relative_rotations, N)
-    plot_gt_poses(gt_trs, gt_rot_mats, relative_rotations, relative_translations, N, Adj)
+    plot_gt_poses_with_pc(gt_trs, gt_rot_mats, relative_rotations, relative_translations, N, Adj, rel_points)
     print("Ground truth plot generated.")
     frames = []
 
@@ -90,6 +121,8 @@ for i in range(N + 1):
     for j in neighbors:
         robots[i].update_neighbor_estimated_rotations([j], [robots[j].estimated_rotation])
         robots[i].update_neighbor_estimated_translations([j], [robots[j].estimated_translation])
+    
+    print(robots[i].estimated_translation)
 
 # Rotation estimation
 print(f"Iteration {0}/{N_iters_R}")
@@ -108,7 +141,11 @@ for it in range(N_iters_R):
         y = [robots[i].estimated_rotation for i in range(N + 1)]
         y_vecs = [y_vec.reshape(2, 2, order='F') for y_vec in y]
         Rs_est = [project_to_SO2(y_vec) for y_vec in y_vecs]
-        img = get_rotation_frame(Rs_est, gt_rot_mats, it, N)
+        trs_est = [robots[i].estimated_translation for i in range(N + 1)]
+
+        img = get_translation_rotation_frame_with_pc(trs_est, Rs_est, gt_trs, gt_rot_mats, it, N,rel_points)
+
+        # img = get_rotation_frame_with_pc(Rs_est, gt_rot_mats, it, N,rel_points)
         frames.append(img)
 
         if it == N_iters_R - 1:
@@ -126,7 +163,7 @@ print("Starting translation optimization...")
 # … assume rots, trs, Adj, relative_rotations, relative_translations,
 #    Rs_est, N, colors, plot_pose, rot_mat, rot_arrs are all defined …
 
-frames = []
+# frames = []
 
 print(f"Iteration {0}/{N_iters_T}")
 for it in range(N_iters_T):
@@ -142,7 +179,7 @@ for it in range(N_iters_T):
     if plotting:
         ys = [robots[i].estimated_translation for i in range(N + 1)]
         Rs_final = Rs_est
-        img = get_translation_frame(ys, Rs_est, gt_trs, gt_rot_mats, it, N)
+        img = get_translation_frame_with_pc(ys, Rs_est, gt_trs, gt_rot_mats, it, N,rel_points)
         frames.append(img)
 
         if it == N_iters_T - 1:

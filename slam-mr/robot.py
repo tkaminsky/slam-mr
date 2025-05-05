@@ -32,7 +32,10 @@ class SLAMRobot:
 
         self.estimated_rotation = vec(np.random.random((2, 2)))
         self.neighbor_estimated_rotations = {}
-        self.estimated_translation = np.random.random((2, 1)) * self.N
+        self.estimated_translation = np.random.random((2, 1))
+        self.estimated_translation[0] = self.estimated_translation[0] * 6 - 3
+        self.estimated_translation[1] = self.estimated_translation[1] * 4 - 2
+
         self.neighbor_estimated_translations = {}
         self.rotation_estimates = {}
 

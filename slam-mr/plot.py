@@ -27,12 +27,14 @@ def plot_gt_rotations(gt_rots, relative_rotations, N):
     plt.savefig('ground_truth_rotations.pdf')
     plt.close(fig)
 
-def plot_gt_poses(gt_trs, gt_rot_mats, relative_rotations, relative_translations, N):
+def plot_gt_poses(gt_trs, gt_rot_mats, relative_rotations, relative_translations, N, Adj):
     colors = plt.cm.viridis(np.linspace(0, 1, N + 1))
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
     for i in range(N + 1):
         plot_pose((gt_trs[i], gt_rot_mats[i]), ax1, color=colors[i])
         for j in range(N+1):
+            if Adj[i,j] == 0:
+                continue
             pred_rot = gt_rot_mats[i]@relative_rotations[(i,j)]
             t = gt_trs[i] + gt_rot_mats[i]@relative_translations[(i,j)]
             plot_pose((t, pred_rot), ax2, color=colors[j])

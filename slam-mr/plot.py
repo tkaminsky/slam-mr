@@ -103,3 +103,47 @@ def get_translation_frame(translations, Rs_final, gt_trs, rot_arrs, it, N):
         img = img[:, :, :3]           # drop alpha channel
         plt.close(fig)
         return img
+
+def save_translation_frame(translations, Rs_final, gt_trs, rot_arrs, it, N):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+        colors = plt.cm.viridis(np.linspace(0, 1, N + 1))
+        for ax, title in zip((ax1, ax2), ('Ground Truth', f'Estimating Translation It: {it+1}')):
+            ax.set_xlim(-1, N + 1)
+            ax.set_ylim(-1, N + 1)
+            ax.set_aspect('equal', 'box')
+            ax.grid(True)
+            ax.set_title(title)
+        fig.suptitle("Optimizing Translations", fontsize=16)
+
+        # ground truth (static)
+        for i in range(N + 1):
+            plot_pose((gt_trs[i], rot_arrs[i]), ax1, color=colors[i])
+
+        # current estimate
+        for i in range(N + 1):
+            plot_pose((translations[i], Rs_final[i]), ax2, color=colors[i])
+
+        # Save the plot as a pdf
+        plt.savefig(f'final_translation_opt.pdf')
+        plt.close(fig)
+
+def save_rotation_frame(Rs_est, gt_rot_mats, it, N):
+        colors = plt.cm.viridis(np.linspace(0, 1, N + 1))
+        fig, axes = plt.subplots(2, 1, figsize=(12, 6))
+        titles = ['Ground Truth', f'Estimated Rotation It: {it+1}']
+        for ax, title in zip(axes, titles):
+            ax.set_xlim(-1, N + 1)
+            ax.set_ylim(-1, 1)
+            ax.set_aspect('equal', 'box')
+            ax.grid(True)
+            ax.set_title(title)
+        # Ground truth (static)
+        for idx, color in zip(range(N + 1), colors):
+            plot_pose((np.array([idx, 0]), gt_rot_mats[idx]), axes[0], color=color)
+            plot_pose((np.array([idx, 0]), Rs_est[idx]), axes[1], color=color)
+
+        # Render and capture (robust across backends)
+        fig.suptitle("Optimizing Rotations", fontsize=16)
+
+        plt.savefig(f'final_rotation_opt.pdf')
+        plt.close(fig)

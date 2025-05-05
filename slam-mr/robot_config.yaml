@@ -1,8 +1,8 @@
 Optimization:
   Rotation:
-    N_iters: 50
+    N_iters: 100
     gamma: 1
   Translation:
-    N_iters: 50
+    N_iters: 100
     gamma: 1
-N: 5
+N: 9

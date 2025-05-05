@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from helpers import stack_block_diag, stack_vecs, vec, project_to_SO2, plot_pose, rot_mat, random_adjacency_matrix
-from plot import plot_gt_rotations, plot_gt_poses, get_rotation_frame, get_translation_frame
+from plot import plot_gt_rotations, plot_gt_poses, get_rotation_frame, get_translation_frame, save_rotation_frame, save_translation_frame
 import imageio
 import random
 import yaml
@@ -18,10 +18,18 @@ if set_seed:
     np.random.seed(1123)
     random.seed(1123)
 
+# Load config dict from yaml
+config_path = 'robot_config.yaml'
+config = yaml.safe_load(open(config_path, 'r'))
+
+# Number of optimization steps for rotations and translations
+N_iters_R = config['Optimization']['Rotation']['N_iters']
+N_iters_T = config['Optimization']['Translation']['N_iters']
+
 # Number of agnets
-N = 5
+N = config['N']
 # 'Concentration' parameter for von Mises distribution. Higher values mean less noise
-w_R = 1000
+w_R = 50
 # Variance for (gaussian) translation noise
 tr_var = .05
 
@@ -66,14 +74,6 @@ if plotting:
 
 print("Starting initial rotation optimization...")
 
-# Load config dict from yaml
-config_path = 'robot_config.yaml'
-config = yaml.safe_load(open(config_path, 'r'))
-
-# Number of optimization steps for rotations and translations
-N_iters_R = config['Optimization']['Rotation']['N_iters']
-N_iters_T = config['Optimization']['Translation']['N_iters']
-
 # Make robots
 robots = [SLAMRobot(config, id=i) for i in range(N + 1)]
 
@@ -109,8 +109,12 @@ for it in range(N_iters_R):
         img = get_rotation_frame(Rs_est, gt_rot_mats, it, N)
         frames.append(img)
 
+        if it == N_iters_R - 1:
+            # Save the last img to a pdf
+            save_rotation_frame(Rs_est, gt_rot_mats, it, N)
+
 if plotting:
-    gif_path = 'rotations.gif'
+    gif_path = 'rotation_opt.gif'
     imageio.mimsave(gif_path, frames, fps=10)
     print(f"Saved rotation optimization GIF to {gif_path}\n")
 
@@ -120,7 +124,7 @@ print("Starting translation optimization...")
 # … assume rots, trs, Adj, relative_rotations, relative_translations,
 #    Rs_est, N, colors, plot_pose, rot_mat, rot_arrs are all defined …
 
-# frames = []
+frames = []
 
 print(f"Iteration {0}/{N_iters_T}")
 for it in range(N_iters_T):
@@ -139,9 +143,14 @@ for it in range(N_iters_T):
         img = get_translation_frame(ys, Rs_est, gt_trs, gt_rot_mats, it, N)
         frames.append(img)
 
+        if it == N_iters_T - 1:
+            # Save the last img to a pdf
+            save_translation_frame(ys, Rs_final, gt_trs, gt_rot_mats, it, N)
+
+
 # Save GIF
 if plotting:
-    gif_path = 'optimization.gif'
+    gif_path = 'translation_opt.gif'
     imageio.mimsave(gif_path, frames, fps=10)
     print(f"Translation optimization GIF saved to {gif_path}.")
 
